@@ -7,6 +7,11 @@ import Profile from './Profile'
 import Discover from './Discover'
 import Matches from './Matches'
 import Chat from './Chat'
+import PublicProfile from './PublicProfile'
+import Maintenance from './Maintenance'
+
+const isMaintenanceMode = true // ✅ bật chế độ bảo trì
+
 export default function App() {
   const [session, setSession] = useState(null)
 
@@ -20,14 +25,20 @@ export default function App() {
       <Navbar session={session} />
       <main className="max-w-3xl mx-auto p-4">
         <Routes>
-          {!session ? (
+          {isMaintenanceMode ? (
+            <>
+              <Route path="*" element={<Maintenance />} />
+            </>
+          ) : !session ? (
             <>
               <Route path="/login" element={<Auth />} />
               <Route path="*" element={<Navigate to="/login" />} />
             </>
           ) : (
             <>
-            <Route path="/chat/:userId" element={<Chat session={session} />} />
+              <Route path="/maintenance" element={<Maintenance />} />
+              <Route path="/profile/:id" element={<PublicProfile />} />
+              <Route path="/chat/:userId" element={<Chat session={session} />} />
               <Route path="/discover" element={<Discover session={session} />} />
               <Route path="/matches" element={<Matches session={session} />} />
               <Route path="/profile" element={<Profile session={session} />} />

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import dayjs from 'dayjs'
 
 export default function Chat({ session }) {
   const { userId } = useParams()
@@ -9,6 +10,7 @@ export default function Chat({ session }) {
   const [matchId, setMatchId] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -17,21 +19,44 @@ export default function Chat({ session }) {
   }, [userId])
 
   useEffect(() => {
-    if (matchId) {
-      fetchMessages()
-      const channel = supabase
-        .channel('chat')
-        .on('postgres_changes', {
+    if (!matchId) return
+
+    fetchMessages()
+
+    const channel = supabase
+      .channel('chat-realtime')
+      .on(
+        'postgres_changes',
+        {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: `match_id=eq.${matchId}`
-        }, payload => {
+        },
+        payload => {
           setMessages(prev => [...prev, payload.new])
-        })
-        .subscribe()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'typing',
+          filter: `match_id=eq.${matchId}`
+        },
+        payload => {
+          const other = payload.new.user_id !== currentUserId
+          if (other && payload.new.typing) {
+            setIsTyping(true)
+            setTimeout(() => setIsTyping(false), 3000)
+          }
+        }
+      )
+      .subscribe()
 
-      return () => supabase.removeChannel(channel)
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [matchId])
 
@@ -71,17 +96,35 @@ export default function Chat({ session }) {
 
   async function sendMessage() {
     if (!newMessage.trim()) return
+
     const { error } = await supabase.from('messages').insert({
       match_id: matchId,
       sender_id: currentUserId,
       content: newMessage
     })
-    if (error) console.error('Lỗi gửi tin nhắn:', error.message)
-    else setNewMessage('')
+
+    if (!error) {
+      setNewMessage('')
+      await supabase.from('typing').upsert({
+        match_id: matchId,
+        user_id: currentUserId,
+        typing: false,
+        updated_at: new Date()
+      })
+    }
+  }
+
+  async function handleTyping() {
+    await supabase.from('typing').upsert({
+      match_id: matchId,
+      user_id: currentUserId,
+      typing: true,
+      updated_at: new Date()
+    })
   }
 
   return (
-    <div className="bg-white shadow p-4 rounded max-w-2xl mx-auto">
+    <div className="bg-white shadow p-4 rounded max-w-2xl mx-auto mt-10">
       {partner && (
         <div className="flex items-center gap-3 mb-4">
           <img
@@ -108,17 +151,24 @@ export default function Chat({ session }) {
                   : 'bg-gray-200 text-gray-800'
               }`}
             >
-              {msg.content}
+              <p>{msg.content}</p>
+              <div className="text-xs text-gray-500 text-right mt-1">
+                {dayjs(msg.created_at).format('HH:mm')}
+              </div>
             </div>
           </div>
         ))}
+        {isTyping && <p className="text-sm text-gray-500">Đang nhắn...</p>}
         <div ref={messagesEndRef} />
       </div>
 
       <div className="flex gap-2">
         <input
           value={newMessage}
-          onChange={e => setNewMessage(e.target.value)}
+          onChange={e => {
+            setNewMessage(e.target.value)
+            handleTyping()
+          }}
           className="flex-1 p-2 border rounded"
           placeholder="Nhập tin nhắn..."
         />
