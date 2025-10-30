@@ -10,7 +10,7 @@ import Chat from './Chat'
 import PublicProfile from './PublicProfile'
 import Maintenance from './Maintenance'
 
-const isMaintenanceMode = fakse // ✅ bật chế độ bảo trì
+const isMaintenanceMode = false // ✅ bật chế độ bảo trì
 
 export default function App() {
   const [session, setSession] = useState(null)
